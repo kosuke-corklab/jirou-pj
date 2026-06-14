@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>二郎台帳 TOKYO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<style>
+/* ── Design tokens (Letterboxd system) ── */
+:root {
+  --c-base:    #14181c;
+  --c-raised:  #2c3440;
+  --c-muted:   #445566;
+  --c-green:   #00ac1c;
+  --c-tx:      #ffffff;
+  --c-tx2:     #99aabb;
+  --c-tx3:     #667788;
+  --c-border:  rgba(255,255,255,.07);
+  --c-hover:   rgba(255,255,255,.04);
+
+  --f:     'DM Sans',-apple-system,BlinkMacSystemFont,'Segoe UI','Hiragino Sans',Meiryo,sans-serif;
+  --f-ja:  'Noto Sans JP',var(--f);
+
+  --fs-xs:  10px;
+  --fs-sm:  11px;
+  --fs-md:  12px;
+  --fs-base:13px;
+  --fs-lg:  14px;
+  --fs-xl:  15px;
+  --fs-2xl: 16px;
+  --fs-3xl: 17px;
+
+  --r-xs: 2px;
+  --r-sm: 3px;
+  --r-md: 4px;
+  --r-pill:20px;
+
+  --sh1: rgba(221,238,255,.25) 0 0 0 1px inset;
+  --t-fast:200ms;
+  --t-now: 100ms;
+}
+
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--c-base);color:var(--c-tx);
+  font-family:var(--f);font-size:var(--fs-base);line-height:1.5;
+  -webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:var(--c-base)}
+::-webkit-scrollbar-thumb{background:var(--c-muted);border-radius:var(--r-sm)}
+::selection{background:var(--c-green);color:#fff}
+:focus-visible{outline:2px solid var(--c-green);outline-offset:2px}
+
+/* ── Header ─────────────────────────────── */
+#hdr{
+  position:fixed;top:0;left:0;right:0;z-index:500;height:44px;
+  background:var(--c-raised);border-bottom:1px solid var(--c-border);
+  display:flex;align-items:center;padding:0 14px;gap:12px
+}
+#logo{display:flex;align-items:center;gap:7px;cursor:pointer;flex-shrink:0;text-decoration:none}
+.logo-icon{
+  width:22px;height:22px;background:var(--c-green);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:#fff;flex-shrink:0
+}
+.logo-tx{font-size:var(--fs-lg);font-weight:600;color:var(--c-tx);letter-spacing:-.015em;
+  font-family:var(--f-ja)}
+.logo-sub{font-size:var(--fs-xs);color:var(--c-tx3);letter-spacing:.04em}
+
+#nav{display:flex;align-items:center;gap:1px;margin-left:auto}
+.nb{
+  background:none;border:none;color:var(--c-tx3);font-family:var(--f);
+  font-size:var(--fs-sm);font-weight:500;cursor:pointer;
+  padding:5px 10px;border-radius:var(--r-md);
+  transition:color var(--t-now),background var(--t-now)
+}
+.nb:hover{color:var(--c-tx);background:var(--c-hover)}
+.nb.on{color:var(--c-tx)}
+#btn-add{
+  margin-left:8px;background:var(--c-green);color:#fff;border:none;
+  font-family:var(--f);font-weight:600;font-size:var(--fs-sm);
+  padding:5px 12px;border-radius:var(--r-md);cursor:pointer;
+  transition:opacity var(--t-fast);white-space:nowrap
+}
+#btn-add:hover{opacity:.82}
+
+/* ── Shell ───────────────────────────────── */
+#app{padding-top:44px;height:100%}
+.view{display:none;height:100%}
+.view.on{display:block}
+
+/* ══ RANKING ═══════════════════════════════ */
+#v-ranking{overflow-y:auto;height:calc(100vh - 44px)}
+
+.rk-bar{
+  display:flex;align-items:center;gap:10px;padding:10px 14px;
+  border-bottom:1px solid var(--c-border);background:var(--c-base);
+  position:sticky;top:0;z-index:10
+}
+.rk-title{font-size:var(--fs-md);font-weight:600;color:var(--c-tx);letter-spacing:.04em;text-transform:uppercase}
+.rk-stats{margin-left:auto;display:flex;gap:10px;font-size:var(--fs-xs);color:var(--c-tx3)}
+.rk-stats b{color:var(--c-tx2)}
+
+.shop-row{
+  display:grid;
+  grid-template-columns:24px 36px 1fr auto 42px;
+  gap:0 10px;align-items:center;
+  padding:7px 14px;border-bottom:1px solid var(--c-border);
+  cursor:pointer;transition:background var(--t-now)
+}
+.shop-row:hover{background:var(--c-hover)}
+.shop-row:focus-visible{outline:2px solid var(--c-green);outline-offset:-2px}
+
+.rk-n{font-size:var(--fs-xs);color:var(--c-tx3);text-align:center;font-weight:500}
+
+.sh-thumb{
+  width:36px;height:50px;border-radius:var(--r-xs);overflow:hidden;flex-shrink:0;
+  background:var(--c-raised);display:flex;align-items:center;justify-content:center;
+  font-size:20px
+}
+.sh-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+
+.sh-info{min-width:0}
+.sh-name{
+  font-size:var(--fs-base);font-weight:500;color:var(--c-tx);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  font-family:var(--f-ja);line-height:1.3
+}
+.sh-sub{display:flex;align-items:center;gap:5px;margin-top:2px}
+
+.badge{
+  display:inline-flex;align-items:center;font-size:9px;font-weight:600;
+  padding:1px 6px;border-radius:var(--r-pill);white-space:nowrap;line-height:1.5;letter-spacing:.02em
+}
+.t-直系           {background:rgba(0,172,28,.14);color:#00c420}
+.t-インスパイア乳化{background:rgba(255,152,0,.12);color:#FFA726}
+.t-キレ系         {background:rgba(255,85,51,.12); color:#FF5533}
+.t-中間           {background:rgba(102,119,136,.14);color:var(--c-tx2)}
+.t-亜流           {background:rgba(255,255,255,.05);color:var(--c-tx3)}
+
+.sh-vis{font-size:var(--fs-xs);color:var(--c-tx3);white-space:nowrap;text-align:right}
+
+.sc-num{font-size:var(--fs-xl);font-weight:700;text-align:right;white-space:nowrap}
+.sc-num.v{color:var(--c-green)}
+.sc-num.u{color:var(--c-muted)}
+
+/* ══ MAP ════════════════════════════════════ */
+#v-map{position:relative}
+#map{height:calc(100vh - 44px)}
+.leaflet-tile-pane{filter:brightness(.55) saturate(.3) hue-rotate(8deg)}
+#drawer{
+  position:absolute;bottom:0;left:0;right:0;z-index:400;
+  background:var(--c-raised);border-top:1px solid rgba(255,255,255,.1);
+  transform:translateY(100%);transition:transform var(--t-fast) cubic-bezier(.22,1,.36,1);
+  max-height:52vh;overflow-y:auto
+}
+#drawer.open{transform:translateY(0)}
+#drw-handle{width:32px;height:3px;background:var(--c-muted);border-radius:2px;margin:8px auto;cursor:pointer}
+
+/* ══ SHOP DETAIL ════════════════════════════ */
+#v-shop{overflow-y:auto;height:calc(100vh - 44px)}
+
+.sh-hdr{
+  background:var(--c-raised);padding:14px;border-bottom:1px solid var(--c-border);
+  display:grid;grid-template-columns:56px 1fr;gap:12px;align-items:start
+}
+.sh-poster{
+  width:56px;height:76px;border-radius:var(--r-sm);overflow:hidden;
+  background:var(--c-base);display:flex;align-items:center;justify-content:center;font-size:26px
+}
+.sh-poster img{width:100%;height:100%;object-fit:cover;display:block}
+
+.sh-meta{}
+.back-btn{
+  background:none;border:none;color:var(--c-tx3);font-size:var(--fs-xs);
+  font-weight:500;cursor:pointer;padding:0;display:inline-flex;align-items:center;
+  gap:3px;margin-bottom:5px;letter-spacing:.02em;transition:color var(--t-now)
+}
+.back-btn:hover{color:var(--c-tx)}
+.sh-dname{font-size:var(--fs-2xl);font-weight:600;color:var(--c-tx);line-height:1.2;font-family:var(--f-ja)}
+.sh-dsub{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:5px;font-size:var(--fs-xs);color:var(--c-tx3)}
+.score-badge{
+  display:inline-flex;align-items:baseline;gap:2px;margin-top:7px;
+  padding:3px 10px;border-radius:var(--r-pill);background:rgba(0,172,28,.12)
+}
+.score-badge-n{font-size:20px;font-weight:700;color:var(--c-green);line-height:1}
+.score-badge-d{font-size:var(--fs-xs);color:var(--c-green);opacity:.7}
+
+.sec{padding:12px 14px;border-bottom:1px solid var(--c-border)}
+.sec-ttl{font-size:var(--fs-xs);font-weight:600;color:var(--c-tx3);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px}
+
+#radar-wrap{max-width:250px;margin:0 auto}
+
+.sbar-row{display:grid;grid-template-columns:80px 1fr 30px;gap:8px;align-items:center;margin-bottom:7px}
+.sbar-lbl{font-size:var(--fs-sm);color:var(--c-tx2);display:flex;align-items:center;justify-content:space-between}
+.sbar-w{font-size:9px;color:var(--c-tx3)}
+.sbar-trk{height:3px;background:rgba(255,255,255,.06);border-radius:var(--r-xs);position:relative}
+.sbar-fill{position:absolute;left:0;top:0;height:100%;background:var(--c-green);border-radius:var(--r-xs);transition:width .5s cubic-bezier(.22,1,.36,1)}
+.sbar-val{font-size:var(--fs-xs);text-align:right;color:var(--c-tx3)}
+
+/* diary */
+.diary-entry{padding:9px 0;border-bottom:1px solid var(--c-border)}
+.diary-entry:last-child{border-bottom:none}
+.de-top{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:3px}
+.de-date{font-size:var(--fs-xs);color:var(--c-tx3);font-weight:500;flex-shrink:0}
+.de-menu{font-size:var(--fs-sm);font-weight:600;color:var(--c-tx)}
+.de-call{
+  display:inline-block;margin-top:3px;
+  font-size:var(--fs-xs);color:var(--c-green);
+  background:rgba(0,172,28,.1);padding:2px 7px;border-radius:var(--r-xs);font-weight:500
+}
+.de-note{font-size:var(--fs-sm);color:var(--c-tx3);margin-top:4px;line-height:1.5}
+.de-photos{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+.de-photo{width:60px;height:60px;object-fit:cover;border-radius:var(--r-xs);cursor:pointer;transition:opacity var(--t-now)}
+.de-photo:hover{opacity:.8}
+
+.act-bar{
+  padding:10px 14px;display:flex;gap:7px;flex-wrap:wrap;
+  border-top:1px solid var(--c-border);position:sticky;bottom:0;background:var(--c-base)
+}
+
+/* ── Buttons ─────────────────────────────── */
+.btn{
+  background:var(--c-green);color:#fff;border:none;
+  font-family:var(--f);font-weight:600;font-size:var(--fs-sm);
+  padding:6px 13px;border-radius:var(--r-md);cursor:pointer;
+  transition:opacity var(--t-fast);white-space:nowrap
+}
+.btn:hover{opacity:.82}
+.btn-g{
+  background:rgba(255,255,255,.06);color:var(--c-tx2);border:none;
+  font-family:var(--f);font-weight:500;font-size:var(--fs-sm);
+  padding:6px 13px;border-radius:var(--r-md);cursor:pointer;
+  transition:background var(--t-fast),color var(--t-fast)
+}
+.btn-g:hover{background:rgba(255,255,255,.1);color:var(--c-tx)}
+.btn-d{
+  background:none;border:1px solid rgba(255,85,51,.3);color:#FF5533;
+  font-family:var(--f);font-weight:500;font-size:var(--fs-sm);
+  padding:6px 13px;border-radius:var(--r-md);cursor:pointer;margin-left:auto;
+  transition:background var(--t-fast)
+}
+.btn-d:hover{background:rgba(255,85,51,.1)}
+
+/* ══ FORMS ══════════════════════════════════ */
+#v-add-shop,#v-add-visit{overflow-y:auto;height:calc(100vh - 44px)}
+.fc{max-width:540px;padding:18px 14px}
+.f-ttl{font-size:var(--fs-2xl);font-weight:600;color:var(--c-tx);margin-bottom:18px;padding-bottom:10px;border-bottom:1px solid var(--c-border)}
+.fg{margin-bottom:15px}
+.fl{display:block;font-size:var(--fs-xs);font-weight:600;color:var(--c-tx3);letter-spacing:.07em;text-transform:uppercase;margin-bottom:5px}
+.fi,.fs,.fta{
+  width:100%;background:var(--c-raised);border:1px solid rgba(255,255,255,.08);
+  box-shadow:var(--sh1);color:var(--c-tx);font-family:var(--f);font-size:var(--fs-base);
+  padding:7px 10px;outline:none;border-radius:var(--r-sm);
+  transition:border-color var(--t-now),box-shadow var(--t-now)
+}
+.fi:focus,.fs:focus,.fta:focus{border-color:var(--c-green);box-shadow:0 0 0 2px rgba(0,172,28,.18)}
+.fi::placeholder,.fta::placeholder{color:var(--c-tx3)}
+.fs option{background:var(--c-raised)}
+.fta{min-height:68px;resize:vertical}
+
+.sl-row{display:grid;grid-template-columns:88px 1fr 36px;gap:9px;align-items:center;margin-bottom:9px}
+.sl-lbl{font-size:var(--fs-sm);color:var(--c-tx2)}
+.sl-lbl small{display:block;font-size:var(--fs-xs);color:var(--c-tx3);font-weight:400}
+input[type=range]{
+  -webkit-appearance:none;width:100%;height:3px;
+  background:rgba(255,255,255,.08);outline:none;cursor:pointer;border-radius:var(--r-xs)
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:13px;height:13px;background:var(--c-green);
+  border-radius:50%;border:2px solid var(--c-base);box-shadow:0 0 0 1px var(--c-green)
+}
+.sl-val{font-size:var(--fs-md);text-align:right;color:var(--c-green);font-weight:600}
+
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.chip{
+  background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);
+  color:var(--c-tx3);font-family:var(--f);font-size:var(--fs-xs);
+  padding:3px 9px;border-radius:var(--r-pill);cursor:pointer;transition:all var(--t-now)
+}
+.chip:hover{border-color:var(--c-green);color:var(--c-green)}
+.chip.on{background:rgba(0,172,28,.14);border-color:var(--c-green);color:var(--c-green)}
+
+.photo-drop{
+  border:1px dashed rgba(255,255,255,.1);padding:14px;text-align:center;
+  cursor:pointer;border-radius:var(--r-sm);font-size:var(--fs-xs);color:var(--c-tx3);
+  transition:border-color var(--t-fast),color var(--t-fast)
+}
+.photo-drop:hover{border-color:var(--c-green);color:var(--c-green)}
+.photo-prev{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.pp{position:relative}
+.pp img{width:60px;height:60px;object-fit:cover;border-radius:var(--r-xs);display:block}
+.pp-rm{position:absolute;top:-4px;right:-4px;width:15px;height:15px;background:#CC2200;color:#fff;border:none;font-size:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:50%}
+
+.coord-row{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px}
+#coord-map{height:196px;border-radius:var(--r-sm);border:1px solid rgba(255,255,255,.08);overflow:hidden}
+
+/* Leaflet overrides */
+.leaflet-container{background:#0e1014}
+.leaflet-popup-content-wrapper{background:var(--c-raised);color:var(--c-tx);border-radius:var(--r-md);box-shadow:0 4px 20px rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.08)}
+.leaflet-popup-tip{background:var(--c-raised)}
+.leaflet-popup-content{font-family:var(--f);margin:10px 12px}
+
+.empty{text-align:center;padding:48px 14px;color:var(--c-tx3)}
+.empty .big{font-size:36px;margin-bottom:8px}
+
+/* ── Bottom nav (mobile only) ───────────── */
+#bnav{
+  display:none;
+  position:fixed;bottom:0;left:0;right:0;z-index:500;
+  background:var(--c-raised);border-top:1px solid var(--c-border);
+  height:calc(54px + env(safe-area-inset-bottom,0px));
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  align-items:stretch
+}
+.bnb{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;background:none;border:none;color:var(--c-tx3);
+  font-size:var(--fs-xs);font-family:var(--f);font-weight:500;
+  cursor:pointer;padding:6px 0;min-height:44px;
+  transition:color var(--t-now)
+}
+.bnb svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.bnb svg path[fill="currentColor"]{stroke:none;fill:currentColor}
+.bnb.on{color:var(--c-tx)}
+.bnb.on svg{stroke:var(--c-green)}
+.bnb.on svg path[fill="currentColor"]{fill:var(--c-green)}
+.bnb-sep{width:1px;background:var(--c-border);flex-shrink:0;margin:10px 0}
+.bnb-add{
+  flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;background:none;border:none;cursor:pointer;padding:6px 0;min-height:44px;
+  color:var(--c-tx3);font-size:var(--fs-xs);font-family:var(--f);font-weight:500
+}
+.bnb-dot{
+  width:30px;height:30px;background:var(--c-green);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:17px;color:#fff;line-height:1;font-weight:300
+}
+
+/* ── Responsive ─────────────────────────── */
+@media(max-width:640px){
+  /* show bottom nav, hide top nav items */
+  #bnav{display:flex}
+  #nav{display:none}
+
+  /* safe area for all scrollable views */
+  #app{padding-bottom:calc(54px + env(safe-area-inset-bottom,0px))}
+  #v-ranking,#v-shop,#v-add-shop,#v-add-visit{
+    height:calc(100vh - 44px - 54px - env(safe-area-inset-bottom,0px))
+  }
+  #map{height:calc(100vh - 44px - 54px - env(safe-area-inset-bottom,0px))}
+
+  /* ranking row: drop visit-count column */
+  .shop-row{grid-template-columns:22px 34px 1fr 42px;gap:0 8px;padding:8px 12px}
+  .sh-vis{display:none}
+  .sh-thumb{width:34px;height:46px}
+
+  /* shop detail header */
+  .sh-hdr{grid-template-columns:44px 1fr;gap:10px;padding:12px}
+  .sh-poster{width:44px;height:60px;font-size:22px}
+  .sh-dname{font-size:var(--fs-xl)}
+
+  /* act bar: 2-col grid, delete full-width */
+  .act-bar{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px 12px}
+  .act-bar .btn-d{grid-column:1/-1;margin-left:0}
+  .btn,.btn-g,.btn-d{min-height:44px;padding:10px 12px;font-size:var(--fs-base)}
+
+  /* sections */
+  .sec{padding:10px 12px}
+  .rk-bar{padding:8px 12px}
+
+  /* sbar: narrower label */
+  .sbar-row{grid-template-columns:58px 1fr 26px;gap:6px}
+  .sbar-lbl{font-size:var(--fs-xs)}
+
+  /* slider rows: stack to narrower label */
+  .sl-row{grid-template-columns:68px 1fr 30px;gap:7px}
+  .sl-lbl{font-size:var(--fs-xs)}
+  .sl-lbl small{display:none}
+
+  /* prevent iOS zoom on inputs */
+  .fi,.fs,.fta{font-size:16px}
+  input[type=range]{height:20px} /* bigger tap target */
+  input[type=range]::-webkit-slider-thumb{width:20px;height:20px}
+
+  /* forms */
+  .fc{padding:14px 12px}
+  .coord-row{grid-template-columns:1fr 1fr}
+  #coord-map{height:180px}
+
+  /* chips: bigger tap area */
+  .chip{padding:5px 11px;font-size:var(--fs-sm)}
+
+  /* photo prev: larger thumbnails */
+  .pp img,.de-photo{width:72px;height:72px}
+
+  /* drawer: taller on mobile */
+  #drawer{max-height:60vh}
+}
+
+@media(max-width:360px){
+  .shop-row{grid-template-columns:18px 30px 1fr 38px}
+  .sh-name{font-size:var(--fs-md)}
+  .sl-row{grid-template-columns:60px 1fr 28px}
+}
+</style>
+</head>
+<body>
+
+<header id="hdr">
+  <div id="logo" onclick="nav('ranking')" role="button" tabindex="0" aria-label="二郎台帳 トップ">
+    <div class="logo-icon" aria-hidden="true">丼</div>
+    <div>
+      <div class="logo-tx">二郎台帳</div>
+      <div class="logo-sub">TOKYO</div>
+    </div>
+  </div>
+  <nav id="nav" aria-label="メインナビ">
+    <button class="nb on" data-v="ranking" onclick="nav('ranking')" aria-current="page">序列</button>
+    <button class="nb" data-v="map" onclick="nav('map')">地図</button>
+    <button id="btn-add" onclick="openAddShop()">＋店舗追加</button>
+  </nav>
+</header>
+
+<main id="app">
+
+  <!-- RANKING -->
+  <div id="v-ranking" class="view on">
+    <div class="rk-bar">
+      <h1 class="rk-title">序列</h1>
+      <div class="rk-stats" id="rk-stats" aria-live="polite"></div>
+    </div>
+    <div id="rk-list" role="list" aria-label="店舗一覧"></div>
+  </div>
+
+  <!-- MAP -->
+  <div id="v-map" class="view">
+    <div id="map" aria-label="店舗マップ"></div>
+    <div id="drawer" role="dialog" aria-label="店舗情報" aria-hidden="true">
+      <div id="drw-handle" onclick="closeDrawer()" role="button" tabindex="0" aria-label="閉じる"></div>
+      <div id="drw-body"></div>
+    </div>
+  </div>
+
+  <!-- SHOP DETAIL -->
+  <div id="v-shop" class="view">
+    <div id="sh-content"></div>
+  </div>
+
+  <!-- ADD / EDIT SHOP -->
+  <div id="v-add-shop" class="view">
+    <div class="fc">
+      <h2 class="f-ttl" id="add-shop-ttl">新規店舗を登録</h2>
+      <form id="shop-form" onsubmit="saveShop(event)" novalidate>
+        <div class="fg">
+          <label class="fl" for="f-name">店名</label>
+          <input class="fi" id="f-name" type="text" placeholder="例: ラーメン二郎 三田本店" required autocomplete="off">
+        </div>
+        <div class="fg">
+          <label class="fl" for="f-type">系統</label>
+          <select class="fs" id="f-type">
+            <option>直系</option><option>インスパイア乳化</option>
+            <option>キレ系</option><option>中間</option><option>亜流</option>
+          </select>
+        </div>
+        <div class="fg">
+          <label class="fl">位置（地図をクリック）</label>
+          <div class="coord-row">
+            <input class="fi" id="f-lat" type="number" step="0.00001" placeholder="緯度" aria-label="緯度">
+            <input class="fi" id="f-lng" type="number" step="0.00001" placeholder="経度" aria-label="経度">
+          </div>
+          <div id="coord-map" aria-label="位置選択マップ"></div>
+        </div>
+        <div class="fg">
+          <label class="fl">評価（0〜5）</label>
+          <div id="sl-wrap"></div>
+        </div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <button type="submit" class="btn">登録する</button>
+          <button type="button" class="btn-g" onclick="nav('ranking')">キャンセル</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD VISIT -->
+  <div id="v-add-visit" class="view">
+    <div class="fc">
+      <h2 class="f-ttl">訪問を記録</h2>
+      <form id="visit-form" onsubmit="saveVisit(event)" novalidate>
+        <div class="fg">
+          <label class="fl" for="vf-date">日付</label>
+          <input class="fi" id="vf-date" type="date">
+        </div>
+        <div class="fg">
+          <label class="fl" for="vf-menu">メニュー</label>
+          <input class="fi" id="vf-menu" type="text" placeholder="例: 小豚 麺少なめ">
+        </div>
+        <div class="fg">
+          <label class="fl" for="vf-call">コール</label>
+          <input class="fi" id="vf-call" type="text" placeholder="例: ニンニク ヤサイマシ">
+          <div class="chips" id="call-chips" role="group" aria-label="コールプリセット"></div>
+        </div>
+        <div class="fg">
+          <label class="fl" for="vf-note">メモ</label>
+          <textarea class="fta" id="vf-note" placeholder="気づきや感想…"></textarea>
+        </div>
+        <div class="fg">
+          <label class="fl">写真</label>
+          <div class="photo-drop" onclick="document.getElementById('photo-in').click()"
+               role="button" tabindex="0" aria-label="写真を追加">タップして写真を追加</div>
+          <input type="file" id="photo-in" accept="image/*" multiple style="display:none"
+                 onchange="addPhotos(this)" aria-label="写真選択">
+          <div class="photo-prev" id="photo-prev"></div>
+        </div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap">
+          <button type="submit" class="btn">記録する</button>
+          <button type="button" class="btn-g" id="v-cancel">キャンセル</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</main>
+
+<!-- Bottom navigation (mobile) -->
+<nav id="bnav" aria-label="ボトムナビ">
+  <button class="bnb on" data-v="ranking" onclick="nav('ranking')" aria-current="page">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M5 6v.01M5 12v.01M5 18v.01"/></svg>
+    <span>序列</span>
+  </button>
+  <div class="bnb-sep" aria-hidden="true"></div>
+  <button class="bnb" data-v="map" onclick="nav('map')">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" stroke-width="0" fill="currentColor"/></svg>
+    <span>地図</span>
+  </button>
+  <div class="bnb-sep" aria-hidden="true"></div>
+  <button class="bnb-add" onclick="openAddShop()" aria-label="店舗を追加">
+    <div class="bnb-dot" aria-hidden="true">＋</div>
+    <span>追加</span>
+  </button>
+</nav>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+// ── Data model ──────────────────────────────
+const AXES=[
+  {k:'men',    l:'麺',          w:20},
+  {k:'soup',   l:'スープ',      w:20},
+  {k:'buta',   l:'ブタ',        w:20},
+  {k:'abura',  l:'アブラ・カラメ',w:10},
+  {k:'yasai',  l:'ヤサイ',      w:10},
+  {k:'ninniku',l:'ニンニク',    w:5},
+  {k:'cospa',  l:'コスパ',      w:10},
+  {k:'kiki',   l:'活気',        w:5},
+];
+const CALLS=['ニンニク','ニンニク多め','ヤサイ','ヤサイマシ','ヤサイマシマシ',
+             'アブラ','アブラマシ','アブラなし','カラメ','カラメマシ'];
+const SEED=[
+  {id:'s1',name:'ラーメン二郎 三田本店',     type:'直系',lat:35.6465,lng:139.7426},
+  {id:'s2',name:'ラーメン二郎 目黒店',       type:'直系',lat:35.6333,lng:139.7150},
+  {id:'s3',name:'ラーメン二郎 仙川店',       type:'直系',lat:35.6640,lng:139.5784},
+  {id:'s4',name:'ラーメン二郎 桜台駅前店',   type:'直系',lat:35.7384,lng:139.6400},
+  {id:'s5',name:'ラーメン二郎 池袋東口店',   type:'直系',lat:35.7302,lng:139.7204},
+  {id:'s6',name:'ラーメン二郎 神田神保町店', type:'直系',lat:35.6958,lng:139.7593},
+  {id:'s7',name:'ラーメン二郎 品川店',       type:'直系',lat:35.6216,lng:139.7292},
+].map(s=>({...s,scores:null,visits:[],created:Date.now()}));
+
+function calcScore(sc){
+  if(!sc) return null;
+  if(AXES.every(a=>!sc[a.k])) return null;
+  return AXES.reduce((t,a)=>(sc[a.k]||0)/5*a.w+t,0);
+}
+
+// ── Storage ─────────────────────────────────
+let DB={shops:[]};
+function loadDB(){
+  try{const s=localStorage.getItem('jiro-daicho-v2');DB=s?JSON.parse(s):{shops:SEED};if(!s)saveDB();}
+  catch(e){DB={shops:SEED};}
+}
+function saveDB(){
+  try{localStorage.setItem('jiro-daicho-v2',JSON.stringify(DB));}
+  catch(e){alert('容量不足です。写真を削除してください。');}
+}
+const shops=()=>DB.shops.map(s=>({...s,score:calcScore(s.scores)}));
+const getShop=id=>{const s=DB.shops.find(x=>x.id===id);return s?{...s,score:calcScore(s.scores)}:null;};
+
+// ── Nav ─────────────────────────────────────
+let curShop=null,editId=null,vShopId=null,vPhotos=[];
+
+function syncNavState(v){
+  document.querySelectorAll('.nb[data-v],.bnb[data-v]').forEach(b=>{
+    const on=b.dataset.v===v;
+    b.classList.toggle('on',on);
+    b.setAttribute('aria-current',on?'page':'false');
+  });
+}
+
+function nav(v){
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+  document.getElementById('v-'+v).classList.add('on');
+  syncNavState(v);
+  if(v==='ranking') renderRanking();
+  if(v==='map') initMap();
+}
+
+function goView(v){
+  document.querySelectorAll('.view').forEach(x=>x.classList.remove('on'));
+  document.getElementById('v-'+v).classList.add('on');
+  // clear nav active state for non-nav views
+  document.querySelectorAll('.nb[data-v],.bnb[data-v]').forEach(b=>{
+    b.classList.remove('on');b.setAttribute('aria-current','false');
+  });
+}
+
+// ── Ranking ─────────────────────────────────
+function thumb(s){
+  if(!s.visits||!s.visits.length) return null;
+  const v=[...s.visits].sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
+  return v.photos&&v.photos.length?v.photos[0]:null;
+}
+
+function renderRanking(){
+  const all=shops().sort((a,b)=>{
+    if(a.score===null&&b.score===null) return a.name.localeCompare(b.name,'ja');
+    if(a.score===null) return 1; if(b.score===null) return -1;
+    return b.score-a.score;
+  });
+  const scored=all.filter(s=>s.score!==null);
+  const avg=scored.length?scored.reduce((t,s)=>t+s.score,0)/scored.length:0;
+  document.getElementById('rk-stats').innerHTML=
+    `<span>全 <b>${all.length}</b> 店</span>`+
+    `<span>評価済 <b>${scored.length}</b></span>`+
+    (scored.length?`<span>平均 <b>${avg.toFixed(1)}</b>点</span>`:'');
+
+  const el=document.getElementById('rk-list');
+  if(!all.length){
+    el.innerHTML='<div class="empty"><div class="big">🍜</div>店舗を追加してください</div>';
+    return;
+  }
+  el.innerHTML=all.map((s,i)=>{
+    const r=i+1, t=thumb(s);
+    const th=t?`<img src="${t}" alt="">`:`<span aria-hidden="true">🍜</span>`;
+    const sv=s.score!==null?s.score.toFixed(1):'—';
+    return `<div class="shop-row" onclick="openShop('${s.id}')" role="listitem"
+               tabindex="0" aria-label="${s.name}、スコア${sv}">
+      <div class="rk-n" aria-hidden="true">${r}</div>
+      <div class="sh-thumb" aria-hidden="true">${th}</div>
+      <div class="sh-info">
+        <div class="sh-name">${s.name}</div>
+        <div class="sh-sub"><span class="badge t-${s.type}">${s.type}</span></div>
+      </div>
+      <div class="sh-vis">${s.visits.length}<span style="color:var(--c-tx3);font-size:9px;margin-left:2px">回</span></div>
+      <div class="sc-num ${s.score!==null?'v':'u'}">${sv}</div>
+    </div>`;
+  }).join('');
+
+  document.querySelectorAll('.shop-row[tabindex]').forEach(r=>{
+    r.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();r.click();}});
+  });
+}
+
+// ── Shop detail ──────────────────────────────
+let radarInst=null;
+
+function openShop(id){
+  curShop=id;
+  const s=getShop(id);if(!s)return;
+  const t=thumb(s);
+  const poster=t?`<img src="${t}" alt="">`:`<span aria-hidden="true">🍜</span>`;
+  const sn=s.score!==null?Math.round(s.score):'—';
+
+  document.getElementById('sh-content').innerHTML=`
+    <div class="sh-hdr">
+      <div class="sh-poster">${poster}</div>
+      <div class="sh-meta">
+        <button class="back-btn" onclick="nav('ranking')">← 一覧</button>
+        <h2 class="sh-dname">${s.name}</h2>
+        <div class="sh-dsub">
+          <span class="badge t-${s.type}">${s.type}</span>
+          <span>${s.visits.length}回訪問</span>
+        </div>
+        ${s.score!==null
+          ?`<div class="score-badge"><span class="score-badge-n">${sn}</span><span class="score-badge-d">&thinsp;/100</span></div>`
+          :`<div style="margin-top:7px;font-size:var(--fs-xs);color:var(--c-tx3)">未評価</div>`}
+      </div>
+    </div>
+    <div class="sec">
+      <div class="sec-ttl">評価プロファイル</div>
+      <div id="radar-wrap"><canvas id="radar-cv"></canvas></div>
+    </div>
+    <div class="sec">
+      <div class="sec-ttl">項目別スコア</div>
+      <div id="sbars" role="list"></div>
+    </div>
+    <div class="sec">
+      <div class="sec-ttl">訪問ログ</div>
+      <div id="vlog"></div>
+    </div>
+    <div class="act-bar">
+      <button class="btn" onclick="openAddVisit('${id}')">訪問を記録</button>
+      <button class="btn-g" onclick="openEditShop('${id}')">店舗を編集</button>
+      <button class="btn-d" onclick="delShop('${id}')">削除</button>
+    </div>`;
+
+  renderBars(s); renderRadar(s); renderLog(s);
+  goView('shop');
+}
+
+function renderBars(s){
+  document.getElementById('sbars').innerHTML=AXES.map(a=>{
+    const v=s.scores?(s.scores[a.k]||0):0;
+    return `<div class="sbar-row" role="listitem">
+      <div class="sbar-lbl">${a.l}<span class="sbar-w">×${a.w}</span></div>
+      <div class="sbar-trk" role="progressbar" aria-valuenow="${v}" aria-valuemin="0" aria-valuemax="5" aria-label="${a.l}">
+        <div class="sbar-fill" style="width:${v/5*100}%"></div>
+      </div>
+      <div class="sbar-val">${v||'—'}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderRadar(s){
+  if(radarInst){radarInst.destroy();radarInst=null;}
+  const cv=document.getElementById('radar-cv');if(!cv)return;
+  radarInst=new Chart(cv,{
+    type:'radar',
+    data:{
+      labels:AXES.map(a=>a.l),
+      datasets:[{
+        data:AXES.map(a=>s.scores?(s.scores[a.k]||0):0),
+        backgroundColor:'rgba(0,172,28,.1)',borderColor:'#00ac1c',borderWidth:1.5,
+        pointBackgroundColor:'#00ac1c',pointRadius:2.5,pointHoverRadius:4
+      }]
+    },
+    options:{
+      responsive:true,
+      scales:{r:{min:0,max:5,
+        ticks:{display:false},
+        grid:{color:'rgba(255,255,255,.05)'},
+        angleLines:{color:'rgba(255,255,255,.05)'},
+        pointLabels:{color:'#99aabb',font:{family:"'Noto Sans JP',sans-serif",size:10,weight:'500'}}
+      }},
+      plugins:{legend:{display:false}}
+    }
+  });
+}
+
+function renderLog(s){
+  const el=document.getElementById('vlog');
+  if(!s.visits||!s.visits.length){
+    el.innerHTML='<p style="font-size:var(--fs-sm);color:var(--c-tx3)">訪問記録なし</p>';return;
+  }
+  el.innerHTML=[...s.visits].sort((a,b)=>new Date(b.date)-new Date(a.date)).map(v=>`
+    <div class="diary-entry">
+      <div class="de-top">
+        <span class="de-date">${v.date||'—'}</span>
+        ${v.menu?`<span class="de-menu">${v.menu}</span>`:''}
+      </div>
+      ${v.call?`<span class="de-call">📣 ${v.call}</span>`:''}
+      ${v.note?`<p class="de-note">${v.note}</p>`:''}
+      ${v.photos&&v.photos.length?`<div class="de-photos">${v.photos.map(p=>
+        `<img class="de-photo" src="${p}" onclick="bigPhoto('${p}')" alt="訪問写真">`).join('')}</div>`:''
+      }
+    </div>`).join('');
+}
+
+function bigPhoto(src){
+  const o=document.createElement('div');
+  o.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.94);z-index:9998;display:flex;align-items:center;justify-content:center;cursor:pointer';
+  o.setAttribute('role','dialog');o.setAttribute('aria-modal','true');
+  o.onclick=()=>document.body.removeChild(o);
+  const img=document.createElement('img');
+  img.src=src;img.style.cssText='max-width:92vw;max-height:92vh;object-fit:contain;border-radius:4px';
+  o.appendChild(img);document.body.appendChild(o);
+}
+
+function delShop(id){
+  if(!confirm('この店舗を削除しますか？'))return;
+  DB.shops=DB.shops.filter(s=>s.id!==id);saveDB();nav('ranking');
+}
+
+// ── Add / edit shop ──────────────────────────
+let cMap=null,cMkr=null;
+
+function openAddShop(){
+  editId=null;
+  document.getElementById('shop-form').reset();
+  document.getElementById('f-lat').value='';document.getElementById('f-lng').value='';
+  document.getElementById('add-shop-ttl').textContent='新規店舗を登録';
+  buildSliders(null);goView('add-shop');setTimeout(initCMap,80);
+}
+
+function openEditShop(id){
+  editId=id;const s=getShop(id);if(!s)return;
+  document.getElementById('f-name').value=s.name;
+  document.getElementById('f-type').value=s.type;
+  document.getElementById('f-lat').value=s.lat||'';
+  document.getElementById('f-lng').value=s.lng||'';
+  document.getElementById('add-shop-ttl').textContent='店舗を編集';
+  buildSliders(s.scores);goView('add-shop');
+  setTimeout(()=>{initCMap();if(s.lat&&s.lng){cMap.setView([s.lat,s.lng],15);placeCMkr(s.lat,s.lng);}},80);
+}
+
+function buildSliders(sc){
+  document.getElementById('sl-wrap').innerHTML=AXES.map(a=>{
+    const v=sc?(sc[a.k]||0):0;
+    return `<div class="sl-row">
+      <div class="sl-lbl">${a.l}<small>重み ×${a.w}</small></div>
+      <input type="range" min="0" max="5" step="0.5" value="${v}" id="sl-${a.k}"
+        aria-label="${a.l}" aria-valuemin="0" aria-valuemax="5" aria-valuenow="${v}"
+        oninput="this.setAttribute('aria-valuenow',this.value);document.getElementById('sv-${a.k}').textContent=parseFloat(this.value).toFixed(1)">
+      <div class="sl-val" id="sv-${a.k}">${parseFloat(v).toFixed(1)}</div>
+    </div>`;
+  }).join('');
+}
+
+function initCMap(){
+  if(cMap){cMap.remove();cMap=null;cMkr=null;}
+  cMap=L.map('coord-map').setView([35.676,139.650],11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OSM'}).addTo(cMap);
+  const la=parseFloat(document.getElementById('f-lat').value);
+  const ln=parseFloat(document.getElementById('f-lng').value);
+  if(la&&ln)placeCMkr(la,ln);
+  cMap.on('click',e=>{
+    placeCMkr(e.latlng.lat,e.latlng.lng);
+    document.getElementById('f-lat').value=e.latlng.lat.toFixed(6);
+    document.getElementById('f-lng').value=e.latlng.lng.toFixed(6);
+  });
+}
+function placeCMkr(la,ln){
+  if(cMkr)cMap.removeLayer(cMkr);
+  cMkr=L.marker([la,ln],{icon:mkIcon('#00ac1c')}).addTo(cMap);
+}
+
+function saveShop(e){
+  e.preventDefault();
+  const name=document.getElementById('f-name').value.trim();
+  const type=document.getElementById('f-type').value;
+  const lat=parseFloat(document.getElementById('f-lat').value)||null;
+  const lng=parseFloat(document.getElementById('f-lng').value)||null;
+  const sc={};AXES.forEach(a=>{sc[a.k]=parseFloat(document.getElementById('sl-'+a.k).value);});
+  const empty=AXES.every(a=>!sc[a.k]);
+  if(editId){
+    const i=DB.shops.findIndex(s=>s.id===editId);
+    if(i>=0)DB.shops[i]={...DB.shops[i],name,type,lat,lng,scores:empty?null:sc};
+    saveDB();openShop(editId);
+  }else{
+    const s={id:'s'+Date.now(),name,type,lat,lng,scores:empty?null:sc,visits:[],created:Date.now()};
+    DB.shops.push(s);saveDB();openShop(s.id);
+  }
+}
+
+// ── Add visit ────────────────────────────────
+function openAddVisit(id){
+  vShopId=id;vPhotos=[];
+  document.getElementById('visit-form').reset();
+  document.getElementById('photo-prev').innerHTML='';
+  document.getElementById('vf-date').value=new Date().toISOString().slice(0,10);
+  document.getElementById('call-chips').innerHTML=CALLS.map(c=>
+    `<button type="button" class="chip" aria-pressed="false" onclick="togChip(this)">${c}</button>`
+  ).join('');
+  document.getElementById('v-cancel').onclick=()=>openShop(id);
+  goView('add-visit');
+}
+
+function togChip(btn){
+  const on=!btn.classList.contains('on');
+  btn.classList.toggle('on',on);btn.setAttribute('aria-pressed',String(on));
+  document.getElementById('vf-call').value=
+    [...document.querySelectorAll('.chip.on')].map(c=>c.textContent).join(' ');
+}
+
+function addPhotos(input){
+  Array.from(input.files).forEach(f=>{
+    const r=new FileReader();
+    r.onload=e=>{
+      const img=new Image();
+      img.onload=()=>{
+        const cv=document.createElement('canvas');
+        const M=640;let w=img.width,h=img.height;
+        if(w>h&&w>M){h=h*M/w;w=M;}else if(h>M){w=w*M/h;h=M;}
+        cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+        vPhotos.push(cv.toDataURL('image/jpeg',.72));renderPrev();
+      };img.src=e.target.result;
+    };r.readAsDataURL(f);
+  });
+}
+function renderPrev(){
+  document.getElementById('photo-prev').innerHTML=vPhotos.map((p,i)=>
+    `<div class="pp"><img src="${p}" alt=""><button class="pp-rm" onclick="rmP(${i})" aria-label="削除">✕</button></div>`
+  ).join('');
+}
+function rmP(i){vPhotos.splice(i,1);renderPrev();}
+
+function saveVisit(e){
+  e.preventDefault();
+  const i=DB.shops.findIndex(s=>s.id===vShopId);if(i<0)return;
+  DB.shops[i].visits.push({
+    id:'v'+Date.now(),
+    date:document.getElementById('vf-date').value,
+    menu:document.getElementById('vf-menu').value.trim(),
+    call:document.getElementById('vf-call').value.trim(),
+    note:document.getElementById('vf-note').value.trim(),
+    photos:[...vPhotos]
+  });
+  saveDB();openShop(vShopId);
+}
+
+// ── Map ──────────────────────────────────────
+let mMap=null,mMkrs=[];
+
+function mkIcon(col){
+  return L.divIcon({
+    className:'',
+    html:`<div style="width:26px;height:26px;background:${col};border:2px solid rgba(0,0,0,.4);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;box-shadow:0 2px 6px rgba(0,0,0,.6)">🍜</div>`,
+    iconSize:[26,26],iconAnchor:[13,13],popupAnchor:[0,-15]
+  });
+}
+
+function initMap(){
+  if(mMap){refreshMkrs();return;}
+  mMap=L.map('map').setView([35.676,139.650],11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OSM'}).addTo(mMap);
+  refreshMkrs();
+}
+function refreshMkrs(){
+  mMkrs.forEach(m=>mMap.removeLayer(m));mMkrs=[];
+  shops().forEach(s=>{
+    if(!s.lat||!s.lng)return;
+    const m=L.marker([s.lat,s.lng],{icon:mkIcon(s.score!==null?'#00ac1c':'#445566'),alt:s.name})
+      .addTo(mMap).on('click',()=>openDrw(s.id));
+    mMkrs.push(m);
+  });
+}
+
+function openDrw(id){
+  const s=getShop(id);if(!s)return;
+  const sn=s.score!==null?Math.round(s.score):'—';
+  document.getElementById('drw-body').innerHTML=`
+    <div style="padding:10px 14px 16px">
+      <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:10px">
+        <div>
+          <div style="font-size:var(--fs-lg);font-weight:600;margin-bottom:4px;font-family:var(--f-ja)">${s.name}</div>
+          <span class="badge t-${s.type}">${s.type}</span>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:26px;font-weight:700;color:var(--c-green);line-height:1">${sn}</div>
+          <div style="font-size:var(--fs-xs);color:var(--c-tx3)">/100</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:7px">
+        <button class="btn" onclick="openShop('${id}')">詳細を見る</button>
+        <button class="btn-g" onclick="openAddVisit('${id}')">訪問を記録</button>
+      </div>
+    </div>`;
+  const drw=document.getElementById('drawer');
+  drw.classList.add('open');drw.setAttribute('aria-hidden','false');
+}
+function closeDrawer(){
+  const drw=document.getElementById('drawer');
+  drw.classList.remove('open');drw.setAttribute('aria-hidden','true');
+}
+
+// ── Boot ─────────────────────────────────────
+loadDB();
+renderRanking();
+</script>
+</body>
+</html>
